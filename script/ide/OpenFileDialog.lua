@@ -133,6 +133,9 @@ end
 -- @return the filename selected or nil if nothing is selected or user clicked cancel.
 function OpenFileDialog.ShowDialog_Win32(filters, title, initialdir, isSaveMode)
 	if(initialdir) then
+		if(not commonlib.Files.IsAbsolutePath(initialdir)) then
+			initialdir = ParaIO.GetCurDirectory(0)..initialdir;
+		end
 		initialdir = initialdir:gsub("/","\\");
 	end
 	local input = {

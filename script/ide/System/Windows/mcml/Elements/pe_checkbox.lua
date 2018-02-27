@@ -1,7 +1,7 @@
 --[[
 Title: checkbox element
 Author(s): LiPeng
-Date: 2015/4/29
+Date: 2017/10/3
 Desc: it handles HTML tags of <checkbox> in HTML. 
 use the lib:
 ------------------------------------------------------------
@@ -42,12 +42,11 @@ function pe_checkbox:OnLoadComponentBeforeChild(parentElem, parentLayout, css)
 
 	local checked = self:GetAttributeWithCode("checked", nil, true);
 	if(checked) then
-		_this:setChecked(true);
+		checked = if_else(checked == "true" or checked == "checked",true,false);
+		self:setChecked(checked);
 	end
-	local buttonName = self:GetAttributeWithCode("name",nil,true);
-	_this:Connect("clicked", function()
-		self:OnClick(buttonName);
-	end)
+	self.buttonName = self:GetAttributeWithCode("name",nil,true);
+	_this:Connect("clicked", self, self.OnClick, "UniqueConnection");
 end
 
 function pe_checkbox:setChecked(checked)
@@ -58,12 +57,20 @@ function pe_checkbox:setChecked(checked)
 	self:SetAttribute("checked", checked);
 end
 
-function pe_checkbox:OnClick(buttonName)
+function pe_checkbox:getChecked()
+	local checked = self:GetAttributeWithCode("checked", nil, true);
+	if(checked) then
+		checked = if_else(checked == "true" or checked == "checked",true,false);
+	end
+	return checked;
+end
+
+function pe_checkbox:OnClick()
 	local ctl = self:GetControl();
 	if(ctl and ctl:isCheckable()) then
 		local checked = not (ctl:isChecked());
 		ctl:setChecked(checked);
-		self:SetAttribute("checked", checked);
+		self:SetAttribute("checked", if_else(checked, "true", "false"));
 	end
 	local result;
 	local onclick = self.onclickscript or self:GetString("onclick");
@@ -72,7 +79,7 @@ function pe_checkbox:OnClick(buttonName)
 	end
 	if(onclick) then
 		-- the callback function format is function(buttonName, self) end
-		result = self:DoPageEvent(onclick, buttonName, self);
+		result = self:DoPageEvent(onclick, self:getChecked(), self);
 	end
 	return result;
 end

@@ -1,7 +1,7 @@
 --[[
 Title: ScrollAreaBase
-Author(s): LiXizhi
-Date: 2015/4/29
+Author(s): LiPeng
+Date: 2017/10/3
 Desc:
 use the lib:
 ------------------------------------------------------------
@@ -196,7 +196,7 @@ function ScrollAreaBase:keyPressEvent(e)
 end
 
 -- clip region. 
-function ScrollAreaBase:ClipRegion()
+function ScrollAreaBase:ViewRegion()
 	local w = self:width();
 	local h = self:height();
 --	echo("ScrollAreaBase:ClipRegion");

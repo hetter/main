@@ -8,11 +8,6 @@ use the lib:
 NPL.load("(gl)script/ide/System/Windows/Controls/TextControl.lua");
 local TextControl = commonlib.gettable("System.Windows.Controls.TextControl");
 ------------------------------------------------------------
-
-test
-------------------------------------------------------------
-
-------------------------------------------------------------
 ]]
 NPL.load("(gl)script/ide/System/Windows/UIElement.lua");
 NPL.load("(gl)script/ide/System/Core/UniString.lua");
@@ -29,6 +24,7 @@ TextControl:Property({"Background", "", auto=true});
 TextControl:Property({"BackgroundColor", "#cccccc", auto=true});
 TextControl:Property({"Color", "#000000", auto=true})
 TextControl:Property({"CursorColor", "#000000", auto=true})
+TextControl:Property({"EmptyTextColor", "#888888", auto=true})
 TextControl:Property({"SelectedBackgroundColor", "#99c9ef", auto=true})
 TextControl:Property({"CurLineBackgroundColor", "#e5ebf1e0", auto=true})
 TextControl:Property({"m_cursor", 0, "cursorPosition", "setCursorPosition"})
@@ -43,6 +39,7 @@ TextControl:Property({"text", nil, "GetText", "SetText"})
 TextControl:Property({"lineWrap", nil, "GetLineWrap", "SetLineWrap", auto=true})
 TextControl:Property({"lineHeight", 20, "GetLineHeight", "SetLineHeight", auto=true})
 TextControl:Property({"AutoTabToSpaces", true, "IsAutoTabToSpaces", "SetAutoTabToSpaces", auto=true})
+TextControl:Property({"EmptyText", nil, "GetEmptyText", "SetEmptyText", auto=true})
 
 --TextControl:Signal("SizeChanged",function(width,height) end);
 --TextControl:Signal("PositionChanged");
@@ -75,6 +72,9 @@ function TextControl:ctor()
 	self.m_selPosStart = 0;
 	self.m_selLineEnd = 0;
 	self.m_selPosEnd = 0;
+
+	self.from_line= 0;
+	self.to_line= 0;
 
 	self.m_undoState = 0;
 	self.m_history = commonlib.Array:new();
@@ -128,7 +128,7 @@ end
 
 -- clip region. 
 function TextControl:ClipRegion()
-	local r = self.parent:ClipRegion();
+	local r = self.parent:ViewRegion();
 	r:setX(r:x() - self:x());
 	r:setY(r:y() - self:y());
 	return r;
@@ -218,6 +218,10 @@ function TextControl:SetText(text)
 	if(self:GetRow() == 0) then
 		self:initDoc();
 	end
+
+	local clip = self.parent:ViewRegion();
+	self:scrollX(clip:x() - self:x());
+	--self:setX(clip:x(), true);
 end
 
 function TextControl:GetText()
@@ -257,6 +261,25 @@ function TextControl:GetLineText(index)
 		return line.text;
 	end
 	return nil;
+end
+
+
+function TextControl:setLinePosColor(line, begin_pos, end_pos, font, color, scale)
+	if(not begin_pos or not end_pos or begin_pos == end_pos or begin_pos > end_pos) then
+		return;
+	end
+	local lineItem = self:GetLine(line)
+	if(lineItem) then
+		lineItem.highlightBlocks = lineItem.highlightBlocks or {};
+		for i = 1,#lineItem.highlightBlocks do 
+			local highlight_block = lineItem.highlightBlocks[i];
+			if(not (begin_pos >= highlight_block.end_pos or end_pos <= highlight_block.begin_pos)) then
+				return;
+			end
+		end
+		local block = {begin_pos = begin_pos, end_pos = end_pos, font = font, color = color, scale = scale};
+		lineItem.highlightBlocks[#lineItem.highlightBlocks+1] =  block;
+	end
 end
 
 function TextControl:InsertItem(pos, text)
@@ -402,7 +425,7 @@ end
 
 function TextControl:vValue()
 	local clip = self:ClipRegion();
-	return clip:y()/self.lineHeight;
+	return math.floor(clip:y()/self.lineHeight+0.5);
 end
 
 function TextControl:mousePressEvent(e)
@@ -413,7 +436,17 @@ function TextControl:mousePressEvent(e)
 		local pos = self:xToPos(text, e:pos():x());
 		local mark = e.shift_pressed;
 		self:moveCursor(line,pos,mark,true);
-		--self:adjustCursor();
+
+   		if(e.isTripleClick) then	
+			-- triple click select the line
+			self:moveCursor(line,0, false);
+		   	self:moveCursor(line,text:length(), true);
+		elseif(e.isDoubleClick) then
+			-- double click select the word
+			local begin_pos,end_pos = self:GetLineText(line):wordPosition(pos);
+			self:moveCursor(line,begin_pos, false);
+	   		self:moveCursor(line,end_pos, true);
+		end
 		e:accept();
 		self:docPos();
 	end
@@ -671,7 +704,8 @@ function TextControl:internalRedo()
 end
 
 function TextControl:scrollX(offst_x)
-	local x = math.min(0,self:x() + offst_x);
+	local min_x = self.parent:ViewRegionOffsetX();
+	local x = math.min(min_x,self:x() + offst_x);
 	self:setX(x, true);
 end
 
@@ -680,19 +714,20 @@ function TextControl:scrollY(offst_y)
 		local tmp_offset = math.ceil(math.abs(offst_y) / self.lineHeight) * self.lineHeight;
 		offst_y = if_else(offst_y >0 ,tmp_offset ,-tmp_offset);
 	end
-	local y = math.min(0,self:y() + offst_y);
+	local min_y = self.parent:ViewRegionOffsetY();
+	local y = math.min(min_y,self:y() + offst_y);
 	self:setY(y, true);
 end
 
 function TextControl:updatePos(hscroll, vscroll)
-	local x = -hscroll;
-	local y = -vscroll * self.lineHeight;
+	local x = -hscroll + self.parent:ViewRegionOffsetX();
+	local y = -vscroll * self.lineHeight + self.parent:ViewRegionOffsetY();
 	self:setX(x);
 	self:setY(y);
 end
 
 function TextControl:ScrollLineForward()
-	if((self:y() + self.lineHeight) <= self.parent:ClipRegion():y()) then
+	if((self:y() + self.lineHeight) <= self.parent:ViewRegion():y()) then
 		self:scrollY(self.lineHeight);
 		--self:setY(self:y() + self.lineHeight);
 
@@ -704,7 +739,7 @@ function TextControl:ScrollLineForward()
 end
 
 function TextControl:ScrollLineBackward()
-	if((self:y() + self:height() - self.lineHeight) > (self.parent:ClipRegion():y() + self.parent:ClipRegion():height())) then
+	if((self:y() + self:height() - self.lineHeight) > (self.parent:ViewRegion():y() + self.parent:ViewRegion():height())) then
 		self:scrollY(-self.lineHeight);
 		--self:setY(self:y() - self.lineHeight);
 		local cursor_y = (self.cursorLine - 1) * self.lineHeight;
@@ -1330,8 +1365,9 @@ function TextControl:adjustCursor()
 		end
 
 		local clip_x_to_self = cursor_x_to_self - cursor_x_to_clip;
-		local self_x = self.parent:ClipRegion():x() - clip_x_to_self;
-		self:setX(self_x, true);
+		local self_x = self.parent:ViewRegion():x() - clip_x_to_self;
+		self:scrollX(self_x - self:x());
+		--self:setX(self_x, true);
 	end
 
 	local cursor_y = (self.cursorLine - 1) * self.lineHeight;
@@ -1386,21 +1422,39 @@ function TextControl:updateGeometry()
 
 	if(self.needUpdateControlSize) then
 		self.needUpdateControlSize = false;
-		local clip = self.parent:ClipRegion();
+		local clip = self.parent:ViewRegion();
+		
 		if(self:GetRealWidth() < clip:width()) then
-			self:setX(clip:x(), true);
-			self:setWidth(clip:width() - self:x());
+			self:scrollX(clip:x() - self:x());	
+			self:setWidth(clip:width());
 		else
 			self:setWidth(self:GetRealWidth());
 		end
 
 		if(self:GetRealHeight() < clip:height()) then
-			self:scrollY(clip:y() - self:y());
-			self:setHeight(clip:height() - self:y());
+			self:scrollY(clip:y() - self:y());			
+			self:setHeight(clip:height());
 		else
+			if(self:y() == 0) then
+				-- 第一次渲染时调整垂直位置
+				self:scrollY(clip:y() - self:y());
+			end
 			self:setHeight(self:GetRealHeight());
 		end
 	end
+end
+
+function TextControl:CalculateTextWidth(text,font)
+	return _guihelper.GetTextWidth(text, font);
+end
+
+function TextControl:DrawTextScaledWithPosition(painter, x, y, text, font, color, scale)
+	font = font or self:GetFont();
+	scale = scale or self:GetScale();
+	color = color or self:GetColor();
+	painter:SetFont(font);
+	painter:SetPen(color);
+	painter:DrawTextScaled(x, y, text, scale);
 end
 
 function TextControl:paintEvent(painter)
@@ -1408,8 +1462,8 @@ function TextControl:paintEvent(painter)
 		self:updateGeometry();
 	end
 	local clipRegion = self:ClipRegion();
-	local from_line = math.max(1, 1 + math.floor((-self:y()) / self.lineHeight)); 
-	local to_line = math.min(self.items:size(), 1 + math.ceil((-self:y() + clipRegion:height()) / self.lineHeight));
+	self.from_line = math.max(1, 1 + math.floor((-(self:y() - self.parent:ViewRegionOffsetY())) / self.lineHeight)); 
+	self.to_line = math.min(self.items:size(), 1 + math.ceil((-self:y() + clipRegion:height()) / self.lineHeight));
 
 
 	if(self.cursorVisible and self:hasFocus() and not self:isReadOnly()) then
@@ -1447,7 +1501,7 @@ function TextControl:paintEvent(painter)
 				end
 			end
 		else
-			for i = math.max(from_line, self.m_selLineStart), math.min(to_line, self.m_selLineEnd) do
+			for i = math.max(self.from_line, self.m_selLineStart), math.min(self.to_line, self.m_selLineEnd) do
 				if(i == self.m_selLineEnd and self.m_selPosEnd == 0) then
 					break;
 				end
@@ -1491,13 +1545,57 @@ function TextControl:paintEvent(painter)
 		end
 	end
 
-	if(not self.items:empty()) then
-		painter:SetPen(self:GetColor());
-		painter:SetFont(self:GetFont());
-		local scale = self:GetScale();
-		for i = from_line, to_line do
-			local item = self.items:get(i);
-			painter:DrawTextScaled(self:x(), self:y() + self.lineHeight * (i - 1), item.text:GetText(), scale);
+	if(not self.items:empty() and self:GetText() ~= "") then
+		for i = self.from_line, self.to_line do
+			local item = self.items:get(i);	
+			local text = item.text;
+			local total_width = 0;
+			local sub_text;
+			local next_block;
+
+			if(item.highlightBlocks and next(item.highlightBlocks)) then
+				-- this line have highlight blocks;				
+				if(item.highlightBlocks[1].begin_pos > 1 ) then
+					sub_text = text:substr(1 , item.highlightBlocks[1].begin_pos - 1);
+					total_width = self:CalculateTextWidth(sub_text, self:GetFont());
+					self:DrawTextScaledWithPosition(painter, self:x(), self:y() + self.lineHeight * (i - 1), sub_text);
+				end
+				
+				local next_pos;
+				for j = 1, #item.highlightBlocks do
+					local block = item.highlightBlocks[j];						
+						
+					sub_text = text:substr(block.begin_pos , block.end_pos);
+					self:DrawTextScaledWithPosition(painter, self:x() + total_width, self:y() + self.lineHeight * (i - 1), sub_text, block.font, block.color, block.scale);
+					total_width = total_width +  self:CalculateTextWidth(sub_text, block.font);
+
+					if(j < #item.highlightBlocks) then
+						next_block = item.highlightBlocks[j+1];
+						sub_text = text:substr(block.end_pos + 1 , next_block.begin_pos - 1);
+						self:DrawTextScaledWithPosition(painter, self:x() + total_width, self:y() + self.lineHeight * (i - 1), sub_text);
+						total_width = total_width +  self:CalculateTextWidth(sub_text, self:GetFont());
+					elseif(j == #item.highlightBlocks) then
+						if(block.end_pos < text:length()) then
+							sub_text = text:substr(block.end_pos + 1 , text:length());													
+							self:DrawTextScaledWithPosition(painter, self:x() + total_width, self:y() + self.lineHeight * (i - 1), sub_text);
+						end
+					end
+				end							
+			else
+				self:DrawTextScaledWithPosition(painter, self:x(), self:y() + self.lineHeight * (i - 1), item.text:GetText());
+			end
+		end
+	else
+		local EmptyText = self:GetEmptyText();
+		if(EmptyText and EmptyText~="" and not self:hasFocus()) then
+			local i = 1;
+			painter:SetPen(self:GetEmptyTextColor());
+			for line_text, breaker_text in string.gfind(EmptyText, "([^\r\n]*)(\r?\n?)") do
+				if(line_text ~= "") then
+					self:DrawTextScaledWithPosition(painter, self:x(), self:y() + self.lineHeight * (i - 1), line_text);
+				end	
+				i = i + 1;
+			end
 		end
 	end
 

@@ -38,6 +38,9 @@ function pe_textarea:OnLoadComponentBeforeChild(parentElem, parentLayout, css)
 		self:SetControl(_this);
 	end
 
+	_this:ShowLineNumber(self:GetBool("ShowLineNumber",false));
+	_this:SetEmptyText(self:GetAttributeWithCode("EmptyText", nil, true));
+
 	_this:ApplyCss(css);
 	_this:setReadOnly(self:GetBool("ReadOnly",false));
 end

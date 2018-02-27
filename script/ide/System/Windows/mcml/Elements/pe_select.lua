@@ -1,7 +1,7 @@
 --[[
 Title: break row
-Author(s): LiXizhi
-Date: 2015/4/29
+Author(s): LiPeng
+Date: 2017/10/3
 Desc: it handles HTML tags of <br> . 
 use the lib:
 ------------------------------------------------------------
@@ -47,7 +47,7 @@ function pe_select:OnLoadComponentBeforeChild(parentElem, parentLayout, css)
 		css.height = height;
 	end
 	
-	_this:Connect("onselect", self, self.OnSelect)
+	_this:Connect("onselect", self, self.OnSelect, "UniqueConnection")
 end
 
 function pe_select:DataBind()
@@ -106,6 +106,7 @@ function pe_select:GetText()
 end
 
 function pe_select:SetValue(value)
+	self:SetAttribute("value", value);
 	if(self.control) then
 		return self.control:SetValue(value);
 	end
